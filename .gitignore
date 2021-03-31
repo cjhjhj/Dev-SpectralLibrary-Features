@@ -1,0 +1,7 @@
+*.xlsx
+*.pptx
+.idea/
+venv/
+FTLD_Batch2_F50/
+FTLD_Batch2_F51/
+FTLD_Batch2_F52/
