@@ -1,7 +1,7 @@
 ######################
 # General parameters #
 ######################
-output_name = FTLD_Batch2        # Used for unlabeled data analysis. Prefix "align_" will be automatically added
+output_name = FTLD_Batch2_Ref50        # Used for unlabeled data analysis. Prefix "align_" will be automatically added
 skip_feature_detection = 0       # 0 = don't skip (i.e. perform feature detection), 1 = skip
 ## If you choose 'skip_feature_detection = 1', then specify absolute path(s) of feature file(s) separated by new line
 ## Note that .mzXML file(s) should be located in the same directory where the following .feature file(s) are
@@ -81,7 +81,7 @@ sd_width = 5                     # SD-width for RT- and m/z-tolerances
 skip_loading_bias_correction = 1 # 0 = don't skip (i.e. perform loading-bias correction/normalization), 1 = skip
 
 ## RT- and m/z-tolerance settings in rescueing step (possibly multiple times)
-rescue = 1                       # 1 = rescue unaligned features by loosening RT- and m/z-tolerances; 0 = no
+rescue = 0                       # 1 = rescue unaligned features by loosening RT- and m/z-tolerances; 0 = no
 rt_tolerance_unit = 1, 2         # 1 = SD-width of dynamic RT-shifts, 2 = seconds
 rt_tolerance_value = 10, 10      # RT-tolerance value(s) according to the above unit(s)
 mz_tolerance_unit = 1, 2         # 1 = SD-width of dynamic m/z-shifts, 2 = ppm

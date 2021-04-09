@@ -5,3 +5,8 @@ venv/
 FTLD_Batch2_F50/
 FTLD_Batch2_F51/
 FTLD_Batch2_F52/
+*.feature
+pre_features_sn_2_gap_1.csv
+psms.txt
+test.py
+__pycache__/utils.cpython-37.pyc

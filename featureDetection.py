@@ -425,6 +425,7 @@ def detectFeatures(inputFile, params):
     #################################
     # Filtering features (3D-peaks) #
     #################################
+    print("  Post-processing of features")
     # A feature may contain multiple peaks from one scan
     # In this case, one with the largest intensity is chosen
     gMinRt, gMaxRt = 0, 0  # Global minimum and maximum RT over all features
@@ -466,8 +467,9 @@ def detectFeatures(inputFile, params):
     ###################################
     # Organization of output features #
     ###################################
-    n = 0
-    ms1ToFeatures = {}
+    print("  Organization of feature format")
+    n = 0   # Index for features
+    m = 0   # Index for ms1ToFeatures
     for i in range(len(f)):
         # 1. mz: mean m/z of a feauture = weighted average of m/z and intensity
         mz = np.sum(np.multiply(f[i]["mz"], f[i]["intensity"])) / np.sum(f[i]["intensity"])
@@ -511,47 +513,54 @@ def detectFeatures(inputFile, params):
         if intensity >= featureIntensityThreshold:
             # 9. Percentage of true feature
             pctTF = (maxRt - minRt) / (gMaxRt - gMinRt) * 100
+
             # Organize features in a structured numpy array form
             if n == 0:
                 features = np.array([(mz, intensity, z, rt, minRt, maxRt, ms1, minMs1, maxMs1, snRatio, pctTF, isotope)],
                                     dtype="f8, f8, f8, f8, f8, f8, f8, f8, f8, f8, f8, f8")
-                n += 1
             else:
-                features = np.append(features,
-                                     np.array([(mz, intensity, z, rt, minRt, maxRt, ms1, minMs1, maxMs1, snRatio, pctTF, isotope)],
-                                              dtype=features.dtype))
-            for j in range(len(f[i]["num"])):
-                num = f[i]["num"][j]
-                if num not in ms1ToFeatures:
-                    ms1ToFeatures[num] = {"mz": [f[i]["mz"][j]],
-                                          "intensity": [f[i]["intensity"][j]]}
-                else:
-                    ms1ToFeatures[num]["mz"].append(f[i]["mz"][j])
-                    ms1ToFeatures[num]["intensity"].append(f[i]["intensity"][j])
+                features = np.append(features, np.array([(mz, intensity, z, rt, minRt, maxRt, ms1, minMs1, maxMs1, snRatio, pctTF, isotope)], dtype=features.dtype))
+            n += 1
+
+            # Organize ms1ToFeatures in a structured numpy array form (it is generated to track back the feature from MS1 peaks)
+            if m == 0:
+                scanNumArray = f[i]["num"]
+                mzArray = f[i]["mz"]
+                intArray = f[i]["intensity"]
+                fIndArray = [n - 1] * len(scanNumArray)
+            else:
+                scanNumArray.extend(f[i]["num"])
+                mzArray.extend(f[i]["mz"])
+                intArray.extend(f[i]["intensity"])
+                fIndArray.extend([n - 1] * len(f[i]["num"]))
+            m += 1
         else:
             continue
 
     features.dtype.names = ("mz", "intensity", "z", "RT", "minRT", "maxRT", "MS1", "minMS1", "maxMS1", "SNratio", "PercentageTF", "isotope")
 
+
     ##########################
     # Decharging of features #
     ##########################
-    features = dechargeFeatures(features)
+    # features = dechargeFeatures(features)
 
     ############################################
     # Convert the features to pandas dataframe #
     # Write features to a file                 #
     ############################################
-    df = pd.DataFrame(features)
-    df = df.drop(columns = ["isotope"])    # "isotope" column was internally used, and no need to be transferred
+    dfFeatures = pd.DataFrame(features)
+    dfFeatures = dfFeatures.drop(columns = ["isotope"])    # "isotope" column was internally used, and no need to be transferred
+    dfMs1ToFeatures = pd.DataFrame({"ms1ScanNumber": scanNumArray, "peakMz": mzArray, "peakIntensity": intArray, "featureIndex": fIndArray})
+    return dfFeatures, dfMs1ToFeatures
 
-    # Create a subdirectory and save features to a file
-    baseFilename = os.path.splitext(os.path.basename(filename))[0]  # i.e. filename without extension
-    featureDirectory = os.path.join(os.getcwd(), baseFilename)
-    if not os.path.exists(featureDirectory):
-        os.mkdir(featureDirectory)
-    featureFilename = baseFilename + "_" + str(params["skipping_scans"]) + ".feature"
-    featureFilename = os.path.join(featureDirectory, featureFilename)
-    df.to_csv(featureFilename, index = False, sep = "\t")
+    # # Create a subdirectory and save features to a file
+    # baseFilename = os.path.splitext(os.path.basename(filename))[0]  # i.e. filename without extension
+    # featureDirectory = os.path.join(os.getcwd(), baseFilename)
+    # if not os.path.exists(featureDirectory):
+    #     os.mkdir(featureDirectory)
+    # featureFilename = baseFilename + "_" + str(params["skipping_scans"]) + ".feature"
+    # featureFilename = os.path.join(featureDirectory, featureFilename)
+    # df.to_csv(featureFilename, index = False, sep = "\t")
 
-    return df  # Pandas DataFrame
+    # return df  # Pandas DataFrame
