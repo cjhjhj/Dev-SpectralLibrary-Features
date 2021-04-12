@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import sys, os, utils, logging, numpy as np
+import sys, os, utils, logging, numpy as np, pandas as pd
 import rpy2.robjects as ro
 from rpy2.robjects.vectors import IntVector, FloatVector
 from numpy.lib.recfunctions import merge_arrays, stack_arrays
@@ -730,3 +730,23 @@ def alignFeatures(fArray, xmlFiles, paramFile):
                                                                     params)
 
     return dfFull, dfPartial, dfArrayUnaligned
+
+
+#############
+# Main part #
+#############
+
+# Read .feature file and append to featureArray
+featureArray = []
+f = pd.read_csv(r"./FTLD_Batch2_F50/FTLD_Batch2_F50.5.feature", sep="\t")
+featureArray.append(f)
+f = pd.read_csv(r"./FTLD_Batch2_F51/FTLD_Batch2_F51.5.feature", sep="\t")
+featureArray.append(f)
+f = pd.read_csv(r"./FTLD_Batch2_F52/FTLD_Batch2_F52.5.feature", sep="\t")
+featureArray.append(f)
+
+# Define inputFiles array containing mzXML file(s)
+fileNames = [r"FTLD_Batch2_F50.mzXML", r"FTLD_Batch2_F51.mzXML", r"FTLD_Batch2_F52.mzXML"]
+
+paramFile = "jumpm.params"
+fullFeatures, partialFeatures, unalignedFeatures = alignFeatures(featureArray, fileNames, paramFile)
