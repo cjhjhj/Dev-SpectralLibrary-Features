@@ -15,3 +15,4 @@ FTLD_Batch2_F50_MS1_to_Features.pickle
 FTLD_Batch2_F50_MS1_to_Features.txt
 psms_category.txt
 __pycache__/featureDetection.cpython-37.pyc
+psms_test.txt
