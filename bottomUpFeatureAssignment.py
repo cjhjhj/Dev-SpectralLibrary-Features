@@ -1,6 +1,5 @@
 import sys, os, re, utils, numpy as np, pandas as pd
 from pyteomics import mzxml
-from featureDetection import detectFeatures
 from datetime import datetime
 
 
@@ -49,8 +48,9 @@ def getPrecursorPeak(reader, psmScanNumber, surveyScanNumber, params):
 t1 = datetime.now()
 mzXML = "../Data/FTLD_Batch2_F50.mzXML"
 idTxt = "../Data/ID.txt"
+mzXMLBaseName = os.path.basename(mzXML).split(".")[0]
 
-# Feature detection
+# Parameters
 params = {}
 params["data_acquisition_mode"] = "1"        # 1 = centroid, 2 = profile for full scan and centroid for MS/MS scan
 params["first_scan_extraction"] = "1"        # the first scan used for search
@@ -62,92 +62,43 @@ params["max_percentage_RT_range"] = "100"    # threshold maximum percentage of t
 params["min_peak_intensity"] = "10000"       # threshold of a peak intensity
 params["skipping_scans"] = "3"               # number of skipping scans during 3D formation
 params["mass_tolerance_peak_matching"] = "3" # mass tolerance for peak matching during 3D formation
-features, ms1ToFeatures = detectFeatures(mzXML, params)
-# features = pd.read_pickle("FTLD_Batch2_F50_Features_SN0_Gap3_3ppm.pickle")
-# ms1ToFeatures = pd.read_pickle("FTLD_Batch2_F50_MS1_to_Features.pickle")
 
 # Read mzXML file
 reader = mzxml.MzXML(mzXML)
 ms2ToSurvey = getMs2ToSurvey(reader)
-mzXMLBaseName = os.path.basename(mzXML).split(".")[0]
 
 # Read ID.txt files to extract PSM information
 print("  Read ID.txt file and feature file")
 psms = pd.read_csv(idTxt, skiprows=1, sep=";")  # Note that ID.txt file is delimited by semicolon
 psms = psms[["Peptide", "Outfile", "measuredMH", "XCorr"]]
 psms = psms.loc[psms["Outfile"].str.contains(mzXMLBaseName)]    # Extract PSMs from FTLD_Batch2_F50.mzXML
-psms["precMz"] = np.nan
-psms["charge"] = np.nan
-psms["featureIndex"] = np.nan
-psms["category"] = ""
+psms["charge"] = [outfile.split("/")[-1].split(".")[-2] for outfile in psms["Outfile"]]
 psms = psms.drop_duplicates()
 print("  PSM information has been parsed\n")
 
-# Find the match between features and PSMs
-n1, n2 = 0, 0   # n1 = number of PSMs mapped to feature(s), n2 = number of PSMs not mapped to any feature
-isoWindow = 1   # Isolation window size for a precursor peak
-proton = 1.007276466812
-progress = utils.progressBar(psms.shape[0])
-for idx, psm in psms.iterrows():
+# Unique key is peptide-charge pair
+keys = psms["Peptide"] + "_" + psms["charge"]
+keys = list(set(keys))
+res = []
+progress = utils.progressBar(len(keys))
+for key in keys:
     progress.increment()
-    [psmRunName, psmScanNum, _, psmZ, _] = os.path.basename(psm["Outfile"]).split(".")
-    psms.loc[idx, "charge"] = psmZ
-    if psmRunName == mzXMLBaseName:
-        # Extract the precursor m/z
+    pep, z = key.split("_")
+    rtArray = np.array([])
+    intArray = np.array([])
+    for _, psm in psms[(psms["Peptide"] == pep) & (psms["charge"] == z)].iterrows():
+        [_, psmScanNum, _, _, _] = os.path.basename(psm["Outfile"]).split(".")
         psmScanNum = int(psmScanNum)
         surveyScanNum = ms2ToSurvey[psmScanNum]
-        precMz, _, _ = getPrecursorPeak(reader, psmScanNum, surveyScanNum, params)
-
-        # Assign the feature corresponding to the PSM, based on the precursor m/z and feature's m/z
-        if precMz != -1:
-            psms.loc[idx, "precMz"] = precMz
-            fInd = ms1ToFeatures[((ms1ToFeatures["ms1ScanNumber"] == str(surveyScanNum)) & (ms1ToFeatures["peakMz"] == precMz))]["featureIndex"].values
-        else:
-            fInd = []
-        if len(fInd) > 0:   # Using
-            psms.loc[idx, "featureIndex"] = fInd
-            n1 += 1
-        else:
-            n2 += 1
-    else:
-        continue
-# print("There are {} unique PSMs".format(len(psms)))
-# print("{} PSMs match to unique features".format(n1))
-# print("{} PSMs do not match to any feature".format(n2))
-
-# psms = pd.read_csv("psms_test.txt", sep="\t")
-# features = pd.read_pickle("FTLD_Batch2_F50_Features_SN0_Gap3_3ppm.pickle")
-# ms1ToFeatures = pd.read_pickle("FTLD_Batch2_F50_MS1_to_Features.pickle")
-
-# Assign RT values to PSMs
-res = []
-keys = psms["Peptide"] + "_" + psms["charge"].astype(str)
-keys = list(set(keys))  # Keep unique "key"s
-for key in keys:
-    pep, z = key.split("_")
-    fInd = psms[(psms["Peptide"] == pep) & (psms["charge"] == z)]["featureIndex"].drop_duplicates().dropna()
-    if len(fInd) > 0:   # There is/are feature(s) corresponding to the key (i.e., peptide-charge pair)
-        # Top-down RT (RT derived from features)
-        rtArray = features.loc[fInd]["RT"].values
-        intArray = features.loc[fInd]["intensity"].values
-    else:
-        # Bottom-up RT (RT derived from PSM(s) of the key)
-        df = psms[(psms["Peptide"] == pep) & (psms["charge"] == z)]
-        rtArray = np.array([])
-        intArray = np.array([])
-        for ind, psm in df.iterrows():
-            [_, psmScanNum, _, _, _] = os.path.basename(psm["Outfile"]).split(".")
-            psmScanNum = int(psmScanNum)
-            surveyScanNum = ms2ToSurvey[psmScanNum]
-            _, precIntensity, precRt = getPrecursorPeak(reader, int(psmScanNum), surveyScanNum, params)
-            rtArray = np.append(rtArray, precRt)
-            intArray = np.append(intArray, precIntensity)
+        _, precIntensity, precRt = getPrecursorPeak(reader, int(psmScanNum), surveyScanNum, params)
+        rtArray = np.append(rtArray, precRt)
+        intArray = np.append(intArray, precIntensity)
     rt = sum(rtArray * intArray) / sum(intArray) / 60
     rtStd = np.std(rtArray / 60)
     res.append([key, rt, rtStd])
 
 res = pd.DataFrame(res, columns=["peptide_charge", "RT", "stdRT"])
-outputFile = mzXMLBaseName + "_TopDown_RT_assignment.txt"
+outputFile = mzXMLBaseName + "_BottomUp_RT_assignment.txt"
 res.to_csv(outputFile, sep="\t", index=False)
 t2 = (datetime.now() - t1).total_seconds()
 print(t2)
