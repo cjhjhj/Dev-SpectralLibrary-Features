@@ -18,3 +18,4 @@ __pycache__/featureDetection.cpython-37.pyc
 psms_test.txt
 FTLD_Batch2_F50_BottomUp_RT_assignment.txt
 FTLD_Batch2_F50_TopDown_RT_assignment.txt
+__pycache__/RTassignment.cpython-37.pyc
