@@ -1,8 +1,7 @@
 import sys, os, re, numpy as np, pandas as pd
 import matplotlib.pyplot as plt
 import rpy2.robjects as ro
-import xgboost as xgb
-from rpy2.robjects.vectors import IntVector, FloatVector
+from rpy2.robjects.vectors import FloatVector
 from RTassignment import getRT
 
 
@@ -71,37 +70,86 @@ def loess():
     """
     return ro.r(rstring)
 
+def getAlignedRT(mode, refRunIdx=0):
+    mzXML = [r"../Data/FTLD_Batch2_F50.mzXML", r"../Data/FTLD_Batch2_F51.mzXML", r"../Data/FTLD_Batch2_F52.mzXML"]
+    idTxt = "../Data/ID.txt"
+    # df = getRT(mzXML, idTxt)
+    df = pd.read_csv("rtAlignment.txt", sep="\t")
 
-# inputDf = pd.read_pickle("df_key_run_RT.pickle")
-mzXML = [r"../Data/FTLD_Batch2_F50.mzXML", r"../Data/FTLD_Batch2_F51.mzXML", r"../Data/FTLD_Batch2_F52.mzXML"]
-idTxt = "../Data/ID.txt"
-# df = getRT(mzXML, idTxt)
-df = pd.read_csv("rtAlignment.txt", sep="\t")
+    # Find the keys fully identified across the runs
+        # To-do: almost fully identified keys may be used
 
-# Find the keys fully identified across the runs
-    # To-do: almost fully identified keys may be used
+    # Initialization
+    res = df.copy()
+    rLoess = loess()
+    rPredict = ro.r("predict")
+    colN = [c for c in df.columns if c.endswith("nPSMs")]
+    colRt = df.columns.drop(colN)
+    colRt = colRt.drop("key")
 
-# LOESS
-res = df.copy()
-rLoess = loess()
-rPredict = ro.r("predict")
-colN = [c for c in df.columns if c.endswith("nPSMs")]
-colRt = df.columns.drop(colN)
-colRt = colRt.drop("key")
-fullRt = df[df[colRt].isna().sum(axis=1) == 0][colRt]
-fullN = df[df[colRt].isna().sum(axis=1) == 0][colN]
-y = (fullRt * fullN.values).sum(axis=1) / fullN.sum(axis=1) # Reference as the weighted mean of RTs
-for col in colRt:
-    x = fullRt[col]
-    mod = rLoess(FloatVector(x), FloatVector(y))
-    res[col] = rPredict(mod, FloatVector(df[col]))
-print()
+    if mode == 1:   # RT-alignment based on the fully-identified peptides/PSMs
+        # 1. RT-alignment using the reference derived from weighted average RTs
+        fullRt = df[df[colRt].isna().sum(axis=1) == 0][colRt]
+        fullN = df[df[colRt].isna().sum(axis=1) == 0][colN]
+        y = (fullRt * fullN.values).sum(axis=1) / fullN.sum(axis=1) # Reference as the weighted mean of RTs
+        for col in colRt:
+            x = fullRt[col]
+            mod = rLoess(FloatVector(x), FloatVector(y))
+            res[col] = rPredict(mod, FloatVector(df[col]))
+    elif mode == 2:
+        # 2. RT-alignment using a specific run as a reference (sequential alignment)
+        # Junmin's preference
 
+        # This approach is composed of three steps
+        # 1. Set a specific run as a reference
+        # 2. Align and calibrate one of remaining run against the reference using a LOESS model
+        # 3. Update the reference by merging the old reference and the aligned/calibrated run (using weighted average)
 
-# mod = rLoess(FloatVector(compRt), FloatVector(refRt))
-# compRtHat = rPredict(mod, FloatVector(compRt))
-# plt.plot(refRt, compRt, '.')
-# plt.plot(refRt, compRtHat, '+')
-# plt.grid()
-# plt.show()
+        # Set the initial reference
+        refIdx = refRunIdx
+        ref = df[colRt[refIdx]].copy()
+        refN = df[colN[refIdx]].copy()
+        print("  {} is set to the initial reference for RT-alignment".format(colRt[refIdx]))
 
+        # Alignment and calibration of RT
+        for i in range(len(colRt)):
+            if i == refIdx: # Skip for the reference run
+                continue
+
+            print("  The RTs in {} are being aligned and calibrated".format(colRt[i]))
+            # Prepare the modeling: find the shared peptides between the reference and the current run
+            idx = (~ref.isna()) & (~df[colRt[i]].isna())
+            x = ref[idx]
+            y = df[idx][colRt[i]]
+
+            # Build a LOESS model and calibrate RTs
+            mod = rLoess(FloatVector(x), FloatVector(y))    # LOESS model based on the shared peptides
+            res[colRt[i]] = rPredict(mod, FloatVector(df[colRt[i]]))    # Calibration is applied to whole peptides of the current run
+
+            # Update the reference by merging the current reference and the calibrated run
+            # There are three types of peptides (i.e., row indices)
+            # 1. Peptides shared between the current reference and the calibrated run -> update the reference by taking the weighted average
+            fullRt = pd.concat([ref[idx], res[colRt[i]][idx]], axis=1)
+            fullN = pd.concat([refN[idx], res[colN[i]][idx]], axis=1)
+            rt = (fullRt * fullN.values).sum(axis=1) / fullN.sum(axis=1)  # Reference as the weighted mean of RTs
+            ref[idx] = rt
+            refN[idx] = refN[idx] + res[colN[i]][idx]
+            # 2. Peptides only found in the calibrated run -> replace the reference with the calibrated RTs
+            idx = (ref.isna()) & (~df[colRt[i]].isna())
+            ref[idx] = res[colRt[i]][idx]
+            refN[idx] = res[colN[i]][idx]
+            # 3. Peptides only found  in the current reference -> no action
+
+    # Organization of the output dataframe
+    # Calculation of the weighted standard deviation of RTs (https://www.itl.nist.gov/div898/software/dataplot/refman2/ch2/weightsd.pdf)
+    M = (~res[colN].isna()).sum(axis=1)
+    den = ((M - 1) / M) * res[colN].sum(axis=1)
+    num = ((res[colRt].sub(ref, axis=0) ** 2) * res[colN].values).sum(axis=1)
+    sdRt = np.sqrt(num / den)
+    sdRt[den == 0] = 0
+    res["SdRT"] = sdRt
+    # Calculation of the weighted average RTs
+    res["AvgRT"] = ref  # In fact, the final reference is equivalent to the weighted average of the aligned/calibrated RTs
+
+    print("  RT-alignment is finished\n")
+    return res

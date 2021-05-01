@@ -28,3 +28,10 @@ rtAlignment_result.txt
 rtAlignment_tested.txt
 RTassignment
 test.txt
+rtAlignment_sequential_F50.txt
+rtAlignment_sequential_F51.txt
+rtAlignment_sequential_F52.txt
+RTfunctions
+sample_RTtable.txt
+__pycache__/RTalignment.cpython-37.pyc
+__pycache__/RTfunctions.cpython-37.pyc
