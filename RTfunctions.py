@@ -154,6 +154,24 @@ def formatRtTable(df):
     return res
 
 
+# # Suresh's revision for speeding up
+# def formatRtTable(df):
+#     df_nPSMs = df.set_index(['key', 'run']).nPSMs.unstack().reset_index()
+#     df_RT = df.set_index(['key', 'run']).RT.unstack().reset_index()
+#     df_nPSMs2 = df_nPSMs.set_index("key")
+#     df_RT2 = df_RT.set_index("key")
+#     col_keys_nPSM ={}
+#     for val in df_nPSMs2.columns:
+#         new_val = val + "_nPSMs"
+#         col_keys_nPSM[val] = new_val
+#
+#     df_nPSMs3 = df_nPSMs2.rename(columns=col_keys_nPSM)
+#     res = pd.concat([df_RT2, df_nPSMs3], axis=1)
+#     res.reset_index(inplace=True)
+#     return res
+
+
+
 def inferRT(idTxt, runs, isolationWindow):
     # Input
     # 1. mzXML files
